@@ -1,1 +1,146 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
+contract Project {
+    // State variables
+    address public owner;
+    uint256 public proposalCount;
+    bool public votingActive;
+    
+    struct Proposal {
+        uint256 id;
+        string title;
+        string description;
+        uint256 voteCount;
+        bool exists;
+    }
+    
+    struct Voter {
+        bool isRegistered;
+        bool hasVoted;
+        uint256 votedProposalId;
+    }
+    
+    mapping(uint256 => Proposal) public proposals;
+    mapping(address => Voter) public voters;
+    
+    // Events
+    event ProposalCreated(uint256 indexed proposalId, string title);
+    event VoterRegistered(address indexed voter);
+    event VoteCast(address indexed voter, uint256 indexed proposalId);
+    event VotingStatusChanged(bool status);
+    
+    // Modifiers
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can call this function");
+        _;
+    }
+    
+    modifier onlyRegisteredVoter() {
+        require(voters[msg.sender].isRegistered, "You must be registered to vote");
+        _;
+    }
+    
+    modifier votingMustBeActive() {
+        require(votingActive, "Voting is not currently active");
+        _;
+    }
+    
+    constructor() {
+        owner = msg.sender;
+        proposalCount = 0;
+        votingActive = false;
+    }
+    
+    // Core Function 1: Create Proposal
+    function createProposal(string memory _title, string memory _description) 
+        public 
+        onlyOwner 
+    {
+        require(bytes(_title).length > 0, "Title cannot be empty");
+        require(bytes(_description).length > 0, "Description cannot be empty");
+        
+        proposalCount++;
+        proposals[proposalCount] = Proposal({
+            id: proposalCount,
+            title: _title,
+            description: _description,
+            voteCount: 0,
+            exists: true
+        });
+        
+        emit ProposalCreated(proposalCount, _title);
+    }
+    
+    // Core Function 2: Register Voter
+    function registerVoter(address _voter) public onlyOwner {
+        require(!voters[_voter].isRegistered, "Voter is already registered");
+        require(_voter != address(0), "Invalid address");
+        
+        voters[_voter] = Voter({
+            isRegistered: true,
+            hasVoted: false,
+            votedProposalId: 0
+        });
+        
+        emit VoterRegistered(_voter);
+    }
+    
+    // Core Function 3: Cast Vote
+    function castVote(uint256 _proposalId) 
+        public 
+        onlyRegisteredVoter 
+        votingMustBeActive 
+    {
+        require(!voters[msg.sender].hasVoted, "You have already voted");
+        require(proposals[_proposalId].exists, "Proposal does not exist");
+        require(_proposalId > 0 && _proposalId <= proposalCount, "Invalid proposal ID");
+        
+        voters[msg.sender].hasVoted = true;
+        voters[msg.sender].votedProposalId = _proposalId;
+        proposals[_proposalId].voteCount++;
+        
+        emit VoteCast(msg.sender, _proposalId);
+    }
+    
+    // Additional utility functions
+    function toggleVoting() public onlyOwner {
+        votingActive = !votingActive;
+        emit VotingStatusChanged(votingActive);
+    }
+    
+    function getProposal(uint256 _proposalId) 
+        public 
+        view 
+        returns (uint256, string memory, string memory, uint256) 
+    {
+        require(proposals[_proposalId].exists, "Proposal does not exist");
+        Proposal memory proposal = proposals[_proposalId];
+        return (proposal.id, proposal.title, proposal.description, proposal.voteCount);
+    }
+    
+    function getVoterInfo(address _voter) 
+        public 
+        view 
+        returns (bool, bool, uint256) 
+    {
+        Voter memory voter = voters[_voter];
+        return (voter.isRegistered, voter.hasVoted, voter.votedProposalId);
+    }
+    
+    function getWinningProposal() public view returns (uint256, string memory, uint256) {
+        require(proposalCount > 0, "No proposals exist");
+        
+        uint256 winningProposalId = 1;
+        uint256 highestVoteCount = proposals[1].voteCount;
+        
+        for (uint256 i = 2; i <= proposalCount; i++) {
+            if (proposals[i].voteCount > highestVoteCount) {
+                highestVoteCount = proposals[i].voteCount;
+                winningProposalId = i;
+            }
+        }
+        
+        return (winningProposalId, proposals[winningProposalId].title, highestVoteCount);
+    }
+}
